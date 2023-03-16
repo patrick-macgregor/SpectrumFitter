@@ -34,5 +34,12 @@
 # Other
 .DS_Store
 
-.root
-.pdf
+# Files
+*.root
+*.pdf
+*.pcm
+*Dict.cc
+
+# Folders
+bin/
+lib/
