@@ -1,0 +1,537 @@
+/*
+template <std::size_t N>
+double GetFitLB( const std::array<bool, N> &a, const std::array<double, N> &LB, double ub_range ){
+	for ( unsigned int i = a.size() - 1; i != 0; i-- ){
+		if ( a[i] ){
+			if ( i == a.size() - 1 ){ return ub_range; }
+			return TMath::Min(  LB[i] + 200, ub_range );
+		}
+	}
+	return 0;
+}
+
+template <std::size_t N>
+double GetFitUB( const std::array<bool, N> &a, const std::array<double, N> &UB, double lb_range ){
+	for ( unsigned int i = 0; i < a.size(); i++ ){
+		if ( a[i] ){
+			if ( i == 0 ){ return lb_range;}
+			return TMath::Max(  UB[i] - 200, lb_range );
+		}
+	}
+	return 0;
+}
+
+// Chi squared info
+double GetReducedChisquare( TF1 *fit_func, double bin_width ){
+	double npars = ( fit_func->GetXmax() - fit_func->GetXmin() )/bin_width - fit_func->GetNumberFreeParameters();
+	return fit_func->GetChisquare()/npars;
+}
+
+// Ordering is energy, width, height, area, centroid
+void PrintPeakInfo( double amp, double amp_err, double mean, double mean_err, double sig, double sig_err, double bin_width ){
+	double width = 2*sig*TMath::Sqrt( 2*TMath::Log(2) );
+	double width_err= 2*sig_err*TMath::Sqrt( 2*TMath::Log(2) );
+	double area = amp*sig*TMath::Sqrt( TMath::TwoPi() /bin_width);
+	double area_err = area*TMath::Sqrt( TMath::Power( amp_err/amp, 2 ) + TMath::Power( sig_err/sig, 2 ) );
+	int std_width = 12;
+	int std_precision = 4;
+
+	// Actual line
+	std::cout << std::left << std::setprecision(std_precision) <<
+		std::setw(std_width) << mean << std::setw(std_width) << mean_err <<
+		std::setw(std_width) << width << std::setw(std_width) << width_err <<
+		std::setw(std_width) << amp << std::setw(std_width) << amp_err <<
+		std::setw(std_width) << area << std::setw(std_width) << area_err;
+
+	// Check if any errors are large
+	TString error_check = '*';
+	if ( mean_err > mean ){ error_check.Append('E'); }else{ error_check.Append('*'); }
+	if ( width_err > width ){ error_check.Append('W'); }else{ error_check.Append('*'); }
+	if ( amp_err > amp ){ error_check.Append('H'); }else{ error_check.Append('*'); }
+	if ( area_err > area ){ error_check.Append('A'); }else{ error_check.Append('*'); }
+	error_check.Append('*');
+
+	std::cout << std::setw(std_width) << error_check << std::endl;
+
+	return;
+}
+
+void PrintPeakHeader(){
+	int std_width = 12;
+	int std_precision = 4;
+
+	// Header
+	std::cout << std::left << std::setprecision(std_precision) <<
+		std::setw(std_width) << "E" << std::setw(std_width) << "err" <<
+		std::setw(std_width) << "W" << std::setw(std_width) << "err" <<
+		std::setw(std_width) << "H" << std::setw(std_width) << "err" <<
+		std::setw(std_width) << "A" << std::setw(std_width) << "err" <<
+		std::endl;
+}
+
+void PrintBGInfo( double bg0, double bg0_err, double bg1, double bg1_err ){
+	int std_width = 12;
+	int std_precision = 4;
+	std::cout << std::left << std::setprecision(std_precision) <<
+		std::setw(std_width) << bg0 << std::setw(std_width) << bg0_err <<
+		std::setw(std_width) << bg1 << std::setw(std_width) << bg1_err <<
+		std::endl;
+	return;
+}
+
+void PrintPeakFit( TF1 *fit_func, int n, double bin_width, bool is_fixed_width ){
+	// Print peak info
+	std::cout << fit_func->GetName() << ": FIT RESULTS" << std::endl;
+	PrintPeakHeader();
+	for ( int i = 0; i < n; i++ ){
+		if ( is_fixed_width ){
+			PrintPeakInfo(
+				fit_func->GetParameter( 2*i + 1 ),
+				fit_func->GetParError( 2*i + 1 ),
+				fit_func->GetParameter( 2*i + 2 ),
+				fit_func->GetParError( 2*i + 2 ),
+				fit_func->GetParameter(0),
+				fit_func->GetParError(0),
+				bin_width
+			);
+		}
+		else{
+			PrintPeakInfo(
+				fit_func->GetParameter( 3*i + 1  ),
+				fit_func->GetParError( 3*i + 1 ),
+				fit_func->GetParameter( 3*i + 2 ),
+				fit_func->GetParError( 3*i + 2 ),
+				fit_func->GetParameter(3*i),
+				fit_func->GetParError(3*i),
+				bin_width
+			);
+		}
+	}
+
+	// Print background info
+	std::cout << std::setw(12) << "BACKGROUND:";
+	if ( is_fixed_width ){
+		PrintBGInfo(
+			fit_func->GetParameter( 2*n + 1 ),
+			fit_func->GetParError( 2*n + 1 ),
+			fit_func->GetParameter( 2*n + 2 ),
+			fit_func->GetParError( 2*n + 2 )
+		);
+	}
+	else{
+		PrintBGInfo(
+			fit_func->GetParameter( 3*n ),
+			fit_func->GetParError( 3*n ),
+			fit_func->GetParameter( 3*n + 1 ),
+			fit_func->GetParError( 3*n + 1 )
+		);
+	}
+	std::cout << std::setw(12) << "CHI-SQUARE" << std::setw(12) << fit_func->GetChisquare() <<
+		std::setw(12) << "RED CHI-SQ." << std::setw(12) << GetReducedChisquare( fit_func, bin_width ) <<
+		std::endl << std::endl;
+	return;
+}
+
+// --------------------------------------------------------------------------------------------- //
+// Global variables
+// Define range for viewing histogram
+int lb_range = -1000;
+int ub_range = 7000;
+
+// Variation from mu that the fit is allowed to take
+double position_variation = 100;
+
+// Number of peaks
+const int n_bnd_peaks = 7;
+const int n_unbnd_peaks = 4;
+
+// Peak positions
+std::array<double,n_bnd_peaks> bnd_peak_energy = {
+	//0, 50.1, 221.2, 461.0, 673.2, 944.5, 1479, 1673, 2098
+	71, 265, 478, 735, 991, 1479, 2098
+};
+
+std::array<double,n_unbnd_peaks> unbnd_peak_energy = {
+	3594, 3782, 4020, 4414
+};
+
+// Lower and upper bounds for fitting
+const int total_bnd_lb = -200;
+const int total_bnd_ub = 2400;
+
+const int total_unbnd_lb = 3000;
+const int total_unbnd_ub = 5000;
+
+// Switches for which peaks to fit (default)
+struct ControlFittingBehaviour{
+	std::array <bool,n_bnd_peaks> bnd_switch;
+	std::array <bool,n_unbnd_peaks> unbnd_switch;
+	bool update_measured_widths;
+	bool update_measured_energies;
+	bool fix_measured_widths;
+	bool fix_measured_energies;
+};
+
+// Store peak widths and peak locations -> give default values
+struct PeakFitProperties{
+	std::array <double, n_bnd_peaks> bnd_peak_energy_measured;
+	std::array <double, n_unbnd_peaks> unbnd_peak_energy_measured;
+	double bnd_peak_width_measured;
+	std::array <double, n_unbnd_peaks> unbnd_peak_width_measured;
+};
+
+ControlFittingBehaviour CFB;
+PeakFitProperties PFP;
+
+// Histogram access options
+TFile *f;
+TH1F *h;
+TCanvas *c;
+int canvas_counter;
+
+TString GetCanvasName(){
+	canvas_counter++;
+	return Form( "CANVAS_%i", canvas_counter );
+}
+
+// Initialise arrays and bools
+void Initialise(){
+	// Control fitting behaviour
+	for ( unsigned int i = 0; i < CFB.bnd_switch.size(); i++ ){ CFB.bnd_switch[i] = 1; }
+	for ( unsigned int i = 0; i < CFB.unbnd_switch.size(); i++ ){ CFB.unbnd_switch[i] = 1; }
+	CFB.update_measured_widths = 1;
+	CFB.update_measured_energies = 1;
+	CFB.fix_measured_widths = 0;
+	CFB.fix_measured_energies = 0;
+
+	// Peak fit properties
+	PFP.bnd_peak_width_measured = 100;
+	for ( unsigned int i = 0; i < PFP.unbnd_peak_width_measured.size(); i++ ){ PFP.unbnd_peak_width_measured[i] = PFP.bnd_peak_width_measured; }
+	PFP.bnd_peak_energy_measured = bnd_peak_energy;
+	PFP.unbnd_peak_energy_measured = unbnd_peak_energy;
+
+	// Global settings
+	gROOT->SetBatch( kTRUE );
+	return;
+}
+
+// --------------------------------------------------------------------------------------------- //
+// Function for fitting peaks
+void FitHistogram( TString file_name, TString hist_name, TString hist_print_name = "" ){
+	// Check there's a name
+	if ( hist_name == "" ){ return; }
+
+	// Get the histogram
+	f = new TFile( file_name );
+	h = (TH1F*)f->Get( hist_name.Data() );
+
+	// Print message
+	std::cout << "--------------------------------------------------------------------------------" << std::endl;
+	std::cout << ">>> " << h->GetName() << std::endl;
+	std::cout << "--------------------------------------------------------------------------------" << std::endl;
+
+	// Draw the histogram
+	h->GetXaxis()->SetRangeUser(lb_range,ub_range);
+	c = new TCanvas( GetCanvasName(), "CANVAS", 1600, 900 );
+	h->Draw();
+
+	// FIT THE BOUND STATES FIRST
+	// Define a range
+	const int n_bnd_peaks_to_fit = GetNumberOfPeaks( CFB.bnd_switch );
+	int bnd_lb = GetFitLB( CFB.bnd_switch, bnd_peak_energy, total_bnd_ub );
+	int bnd_ub = GetFitLB( CFB.bnd_switch, bnd_peak_energy, total_bnd_lb );
+	int loop_offset = 0;
+
+	// Generate fitting function and format
+	TF1* bnd_fit_func = new TF1( "bnd_fit_func", GetFitString(n_bnd_peaks_to_fit,1), bnd_lb, bnd_ub );
+	bnd_fit_func->SetNpx(400);
+	bnd_fit_func->SetLineWidth(4);
+
+	// Declare individual fitting functions and markers
+	TF1* bnd_ind_fit_func[n_bnd_peaks_to_fit];
+	TF1* bg_fit = new TF1( "bg_fit", BackgroundString(0), lb_range, ub_range );
+	TLine *bnd_peak_marker[n_bnd_peaks_to_fit];
+
+	// Loop over number of peaks
+	for ( int i = 0; i < n_bnd_peaks; i++ ){
+		if ( CFB.bnd_switch[i] ){
+			// Draw peak-marker lines
+			bnd_peak_marker[i - loop_offset] = new TLine( PFP.bnd_peak_energy_measured[i], 0, PFP.bnd_peak_energy_measured[i], 1.05*h->GetMaximum() );
+			bnd_peak_marker[i - loop_offset]->SetLineColor( kGray );
+			bnd_peak_marker[i - loop_offset]->Draw("SAME");
+
+			// CONSTRAIN LOCAL PARAMETERS OF FIT
+			// Means
+			bnd_fit_func->SetParName( 2*(i+1-loop_offset), Form(" Mu%i",i+1) );
+			if ( CFB.fix_measured_energies ){
+				bnd_fit_func->FixParameter( 2*(i+1-loop_offset), PFP.bnd_peak_energy_measured[i] );
+			}
+			else{
+				bnd_fit_func->SetParLimits( 2*(i+1-loop_offset), bnd_peak_energy[i - loop_offset] - position_variation, bnd_peak_energy[i - loop_offset] + position_variation );
+				bnd_fit_func->SetParameter( 2*(i+1-loop_offset), bnd_peak_energy[i - loop_offset] );
+			}
+
+			// Amplitudes
+			bnd_fit_func->SetParLimits( 2*(i-loop_offset)+1, 0, 100 );
+			bnd_fit_func->SetParameter( 2*(i-loop_offset)+1, 10 );
+			bnd_fit_func->SetParName( 2*(i-loop_offset)+1, Form("Amp%i",i+1) );
+		}
+		else{
+			loop_offset += 1;
+		}
+	}
+
+	// CONSTRAIN GLOBAL PARAMETERS OF FIT
+	// Constrain bound-state width
+	bnd_fit_func->SetParName( 0, " Wid");
+	if ( CFB.fix_measured_widths ){
+		bnd_fit_func->FixParameter(0, PFP.bnd_peak_width_measured );
+	}
+	else{
+		bnd_fit_func->SetParLimits( 0, 40, 100 );
+		bnd_fit_func->SetParameter( 0, 40 );
+	}
+
+	// Background
+	bnd_fit_func->SetParLimits( 2*n_bnd_peaks_to_fit+1, 0, 10 );
+	bnd_fit_func->SetParLimits( 2*n_bnd_peaks_to_fit+2, -1, 1 );
+	bnd_fit_func->SetParameter( 2*n_bnd_peaks_to_fit+1, 2 );
+	bnd_fit_func->SetParameter( 2*n_bnd_peaks_to_fit+2, 0.001 );
+
+	bnd_fit_func->SetParName( 2*n_bnd_peaks_to_fit+1, " bg0");
+	bnd_fit_func->SetParName( 2*n_bnd_peaks_to_fit+2, " bg1");
+
+	// FIT
+	h->Fit("bnd_fit_func","0");
+	std::cout << std::endl;
+
+	// DRAW
+	// Fix background parameters
+	bg_fit->FixParameter(0, bnd_fit_func->GetParameter(2*n_bnd_peaks_to_fit+1) );
+	bg_fit->FixParameter(1, bnd_fit_func->GetParameter(2*n_bnd_peaks_to_fit+2) );
+
+	// Format background
+	bg_fit->SetLineWidth(2);
+	bg_fit->SetLineColor(kGray+3);
+
+	// Draw background
+	bg_fit->Draw("SAME");
+
+	// Draw bound-state fitting function
+	bnd_fit_func->Draw("SAME");
+
+	// Deal with individual bound peaks
+	for ( int i = 0; i < n_bnd_peaks_to_fit; i++ ){
+		// Make fitting function
+		bnd_ind_fit_func[i] = new TF1( Form( "peak%i", i ), GetFitString(1,1), bnd_lb, bnd_ub );
+
+		// Fix parameters
+		bnd_ind_fit_func[i]->FixParameter( 0, bnd_fit_func->GetParameter(0) );
+		bnd_ind_fit_func[i]->FixParameter( 1, bnd_fit_func->GetParameter(2*i+1) );
+		bnd_ind_fit_func[i]->FixParameter( 2, bnd_fit_func->GetParameter(2*(i+1)) );
+		bnd_ind_fit_func[i]->FixParameter( 3, bnd_fit_func->GetParameter(2*n_bnd_peaks_to_fit+1) );
+		bnd_ind_fit_func[i]->FixParameter( 4, bnd_fit_func->GetParameter(2*n_bnd_peaks_to_fit+2) );
+
+		// Format
+		bnd_ind_fit_func[i]->SetNpx(400);
+		bnd_ind_fit_func[i]->SetLineColor(kBlack);
+		bnd_ind_fit_func[i]->SetLineWidth(2);
+
+		// Draw
+		bnd_ind_fit_func[i]->Draw("SAME");
+	}
+
+	// Display the FWHM for a sanity check
+	std::cout << "FWHM: " << 2*bnd_fit_func->GetParameter(0)*TMath::Sqrt( 2*TMath::Log(2) ) << " keV" << std::endl;
+
+	// Update measured widths if desired
+	if ( CFB.update_measured_widths ){
+		PFP.bnd_peak_width_measured = bnd_fit_func->GetParameter(0);
+	}
+
+	// Update measured positions if desired
+	if ( CFB.update_measured_energies ){
+		loop_offset = 0;
+		for ( int i = 0; i < n_bnd_peaks; i++ ){
+			if ( CFB.bnd_switch[i] ){
+				PFP.bnd_peak_energy_measured[i] = bnd_fit_func->GetParameter(2*(i+1-loop_offset));
+			}
+			else{
+				loop_offset += 1;
+			}
+		}
+	}
+
+	PrintPeakFit( bnd_fit_func, n_bnd_peaks_to_fit, h->GetBinWidth(0), 1 );
+
+	// ----------------------------------------------------------------------------------------- //
+	// NOW THE FIT UNBOUND STATES
+	// Define a range
+	const int n_unbnd_peaks_to_fit = GetNumberOfPeaks( CFB.unbnd_switch );
+	if ( n_unbnd_peaks_to_fit > 0 ){
+		int unbnd_lb = GetFitLB( CFB.unbnd_switch, unbnd_peak_energy, total_unbnd_ub );
+		int unbnd_ub = GetFitLB( CFB.unbnd_switch, unbnd_peak_energy, total_unbnd_lb );
+
+		// Generate fitting function and format
+		TF1* unbnd_fit_func = new TF1( "unbnd_fit_func", GetFitString(n_unbnd_peaks_to_fit,0), unbnd_lb, unbnd_ub );
+		unbnd_fit_func->SetNpx(400);
+		unbnd_fit_func->SetLineWidth(4);
+		unbnd_fit_func->SetLineColor(kBlue);
+
+		// Declare individual fitting functions and markers
+		TF1* unbnd_ind_fit_func[n_unbnd_peaks_to_fit];
+		TLine *unbnd_peak_marker[n_unbnd_peaks_to_fit];
+
+		// Find minimum width based on bound-state fit
+		double min_width = bnd_fit_func->GetParameter(0);
+
+		// Loop over number of peaks
+		loop_offset = 0;
+		for ( int i = 0; i < n_unbnd_peaks; i++ ){
+			if ( CFB.unbnd_switch[i] ){
+				// Draw peak-marker lines
+				unbnd_peak_marker[i - loop_offset] = new TLine( PFP.unbnd_peak_energy_measured[i], 0, PFP.unbnd_peak_energy_measured[i], 1.05*h->GetMaximum() );
+				unbnd_peak_marker[i - loop_offset]->SetLineColor( kGray );
+				unbnd_peak_marker[i - loop_offset]->Draw("SAME");
+
+				// CONSTRAIN LOCAL PARAMETERS OF FIT
+				// Means
+				unbnd_fit_func->SetParName( 3*(i - loop_offset)+2, Form(" Mu%i",i+1) );
+				if ( CFB.fix_measured_energies ){
+					unbnd_fit_func->FixParameter( 3*(i-loop_offset)+2, PFP.unbnd_peak_energy_measured[i] );
+				}
+				else{
+					unbnd_fit_func->SetParLimits( 3*(i - loop_offset)+2, unbnd_peak_energy[i - loop_offset] - position_variation, unbnd_peak_energy[i - loop_offset] + position_variation );
+					unbnd_fit_func->SetParameter( 3*(i - loop_offset)+2, unbnd_peak_energy[i - loop_offset] );
+				}
+
+				// Amplitudes
+				unbnd_fit_func->SetParLimits( 3*(i - loop_offset)+1, 0, 100 );
+				unbnd_fit_func->SetParameter( 3*(i - loop_offset)+1, 10 );
+				unbnd_fit_func->SetParName( 3*(i - loop_offset)+1, Form("Amp%i",i+1) );
+
+				// Widths
+				unbnd_fit_func->SetParName( 3*(i - loop_offset), Form("Wid%i", i+1));
+				if ( CFB.fix_measured_widths ){
+					unbnd_fit_func->FixParameter( 3*(i - loop_offset), PFP.unbnd_peak_width_measured[i] );
+				}
+				else{
+					unbnd_fit_func->SetParLimits( 3*(i - loop_offset), min_width, 200 );
+					unbnd_fit_func->SetParameter( 3*(i - loop_offset), min_width + 1 );
+				}
+			}
+			else{
+				loop_offset += 1;
+			}
+		}
+
+		// CONSTRAIN GLOBAL PARAMETERS OF FIT
+		// Background
+		unbnd_fit_func->FixParameter( 3*n_unbnd_peaks_to_fit, bnd_fit_func->GetParameter( 2*n_bnd_peaks_to_fit+1 ) );
+		unbnd_fit_func->FixParameter( 3*n_unbnd_peaks_to_fit+1, bnd_fit_func->GetParameter( 2*n_bnd_peaks_to_fit+2 ) );
+
+		unbnd_fit_func->SetParName( 3*n_unbnd_peaks_to_fit, " bg0");
+		unbnd_fit_func->SetParName( 3*n_unbnd_peaks_to_fit+1, " bg1");
+
+		// FIT AND DRAW
+		h->Fit("unbnd_fit_func", "0");
+		std::cout << std::endl;
+		unbnd_fit_func->Draw("SAME");
+
+		// Deal with individual bound peaks
+		for ( int i = 0; i < n_unbnd_peaks_to_fit; i++ ){
+			// Make fitting function
+			unbnd_ind_fit_func[i] = new TF1( Form( "peak%i", i ), GetFitString(1,1), unbnd_lb, unbnd_ub );
+
+			// Fix parameters
+			unbnd_ind_fit_func[i]->FixParameter( 0, unbnd_fit_func->GetParameter(3*i) );
+			unbnd_ind_fit_func[i]->FixParameter( 1, unbnd_fit_func->GetParameter(3*i+1) );
+			unbnd_ind_fit_func[i]->FixParameter( 2, unbnd_fit_func->GetParameter(3*i+2) );
+			unbnd_ind_fit_func[i]->FixParameter( 3, unbnd_fit_func->GetParameter(3*n_unbnd_peaks_to_fit) );
+			unbnd_ind_fit_func[i]->FixParameter( 4, unbnd_fit_func->GetParameter(3*n_unbnd_peaks_to_fit+1) );
+
+			// Format
+			unbnd_ind_fit_func[i]->SetNpx(400);
+			unbnd_ind_fit_func[i]->SetLineColor(kBlack);
+			unbnd_ind_fit_func[i]->SetLineWidth(2);
+
+			// Draw
+			unbnd_ind_fit_func[i]->Draw("SAME");
+		}
+
+		PrintPeakFit( unbnd_fit_func, n_unbnd_peaks_to_fit, h->GetBinWidth(0), 0 );
+
+		// Update measured positions if desired
+		if ( CFB.update_measured_energies ){
+			loop_offset = 0;
+			for ( int i = 0; i < n_unbnd_peaks_to_fit; i++ ){
+				if ( CFB.unbnd_switch[i] ){
+					PFP.unbnd_peak_energy_measured[i] = unbnd_fit_func->GetParameter(3*(i-loop_offset)+2);
+				}
+				else{
+					loop_offset += 1;
+				}
+			}
+		}
+
+			// Update measured widths if desired
+		if ( CFB.update_measured_widths ){
+			loop_offset = 0;
+			for ( int i = 0; i < n_unbnd_peaks_to_fit; i++ ){
+				if ( CFB.unbnd_switch[i] ){
+					PFP.unbnd_peak_width_measured[i] = unbnd_fit_func->GetParameter(3*(i - loop_offset));
+				}
+				else{
+					loop_offset += 1;
+				}
+			}
+		}
+
+	}
+
+	// Check if you want to print
+	if ( hist_print_name != "" ){
+		c->Print( hist_print_name );
+		std::cout << "WROTE CANVAS TO FILE: " << hist_print_name << std::endl << std::endl;
+	}
+
+	// Clean up
+	f->Close();
+
+	return;
+}
+
+
+// --------------------------------------------------------------------------------------------- //
+// Main function to fit different histograms
+void FitPeaks( TString file_name = ""){
+	if ( file_name != "" ){
+		Initialise();
+
+		// Fit the whole spectrum
+		FitHistogram( file_name, "RecoilMode/Ex_recoil", "total_fit.pdf" );
+
+		// Reset parameters for fitting the individual spectra
+		//CFB.update_measured_widths = 0; CFB.update_measured_energies = 0;
+		//CFB.fix_measured_widths = 1; CFB.fix_measured_energies = 1;
+
+		// Begin fitting
+		//CFB.bnd_switch = {1,1,1,1,0,0,0}; CFB.unbnd_switch = {0,0,0,0};
+		//FitHistogram("Ex_zcut2", "spec2.pdf");
+		/*CFB.bnd_switch = {1,1,1,1,1,1,0}; CFB.unbnd_switch = {0,0,0,0};
+		FitHistogram("Ex_zcut3", "spec3.pdf");
+		CFB.bnd_switch = {1,1,1,1,1,1,1}; CFB.unbnd_switch = {0,0,0,0};
+		FitHistogram("Ex_zcut4", "spec4.pdf");
+		CFB.bnd_switch = {1,1,1,1,1,1,1}; CFB.unbnd_switch = {0,0,0,0};
+		FitHistogram("Ex_zcut5", "spec5.pdf");
+		CFB.bnd_switch = {0,1,1,1,1,1,1}; CFB.unbnd_switch = {1,1,1,1};
+		FitHistogram("Ex_zcut6", "spec6.pdf");
+		CFB.bnd_switch = {0,1,1,1,1,1,1}; CFB.unbnd_switch = {1,1,1,1};
+		FitHistogram("Ex_zcut7", "spec7.pdf");
+	}
+	else{
+		std::cout << "PASS ME A FILE NAME!" << std::endl;
+	}
+	return;
+}
+*/
