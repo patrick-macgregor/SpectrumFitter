@@ -87,7 +87,7 @@ InteractiveMode: FALSE
 #PP.Width_LB: -						# Sets the lower bound of the amplitude of peak PP
 #PP.Width_UB: -						# Sets the upper bound of the amplitude of peak PP
 #PP.Width_fixed: -					# Fixes the amplitude of peak PP (0 = free, 1 = fixed)
-#PP.Doublet: -						# 
+#PP.Doublet: -						# Specifies whether peak PP is a doublet or not
 
 #GuessWidth: -						# The default guess for the width of the peaks (not bound peaks)
 #GuessWidth_LB: -					# The LB guess for the width of the peaks
